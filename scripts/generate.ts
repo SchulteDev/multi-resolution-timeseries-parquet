@@ -19,6 +19,7 @@ const OUT_DIR = join(process.cwd(), 'public', 'data')
 let totalBytes = 0
 
 function writeParquet(relPath: string, series: Series): FileInfo {
+  if (series.ts.length === 0) throw new Error(`Refusing to write empty series to ${relPath}`)
   const abs = join(OUT_DIR, relPath)
   mkdirSync(dirname(abs), { recursive: true })
   const buf = serializeTier(series)
@@ -42,6 +43,7 @@ console.log(`Generating ${SERIES}: ${new Date(START).toISOString()} -> ${new Dat
 rmSync(OUT_DIR, { recursive: true, force: true })
 
 const minuteCount = (END - START) / RES['1min']
+if (minuteCount <= 0) throw new Error(`Empty range: START (${START}) must be before END (${END})`)
 console.time('generate 1min')
 const minute = generateMinuteSeries({ startMs: START, count: minuteCount, seed: SEED })
 console.timeEnd('generate 1min')

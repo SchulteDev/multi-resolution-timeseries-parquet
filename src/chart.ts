@@ -1,7 +1,14 @@
 import uPlot from 'uplot'
-import type { LoadResult } from './dataLoader'
+import type { Series } from '../shared/ohlc'
 
 export type ChartMode = 'candles' | 'line'
+
+// The single source of truth for which columns each mode reads — candles need
+// full OHLC, line only `close`. Used for both the Parquet projection and the
+// chart's series shape so the two can't drift.
+export function columnsForMode(mode: ChartMode): string[] {
+  return mode === 'candles' ? ['ts', 'open', 'high', 'low', 'close'] : ['ts', 'close']
+}
 
 const BULL = '#3ea56b'
 const BEAR = '#e05a5a'
@@ -16,7 +23,9 @@ const ACCENT = '#4c8bf5'
 function candlestickPlugin(): uPlot.Plugin {
   function draw(u: uPlot) {
     const ctx = u.ctx
-    const [iMin, iMax] = (u.series[0] as unknown as { idxs: [number, number] }).idxs
+    const idxs = (u.series[0] as unknown as { idxs: [number, number] | null }).idxs
+    if (!idxs) return // empty data / zero rows: nothing to draw
+    const [iMin, iMax] = idxs
     const colWidth = u.bbox.width / Math.max(1, iMax - iMin)
     const bodyWidth = Math.max(1, Math.min(18, colWidth - 2))
 
@@ -114,7 +123,8 @@ function panPlugin(minSec: number, maxSec: number): uPlot.Plugin {
 }
 
 // Wheel to zoom the x-axis around the cursor (uPlot only drag-zooms by default).
-function wheelZoomPlugin(factor = 0.85): uPlot.Plugin {
+// Clamped to the data bounds so zoom-out can't scroll past the series.
+function wheelZoomPlugin(minSec: number, maxSec: number, factor = 0.85): uPlot.Plugin {
   return {
     hooks: {
       ready: (u: uPlot) => {
@@ -129,7 +139,9 @@ function wheelZoomPlugin(factor = 0.85): uPlot.Plugin {
             const xMax = u.scales.x.max as number
             const xVal = u.posToVal(cursorX, 'x')
             const f = e.deltaY < 0 ? factor : 1 / factor
-            u.setScale('x', { min: xVal - (xVal - xMin) * f, max: xVal + (xMax - xVal) * f })
+            const min = Math.max(minSec, xVal - (xVal - xMin) * f)
+            const max = Math.min(maxSec, xVal + (xMax - xVal) * f)
+            u.setScale('x', { min, max })
           },
           { passive: false },
         )
@@ -140,7 +152,7 @@ function wheelZoomPlugin(factor = 0.85): uPlot.Plugin {
 
 const nullPaths = () => null
 
-export function buildData(mode: ChartMode, r: LoadResult): uPlot.AlignedData {
+export function buildData(mode: ChartMode, r: Series): uPlot.AlignedData {
   const xs = r.ts.map((ms) => ms / 1000) // uPlot time scale is in seconds
   return mode === 'candles' ? [xs, r.open, r.high, r.low, r.close] : [xs, r.close]
 }
@@ -160,6 +172,7 @@ export function makeOptions(
   bounds: { minMs: number; maxMs: number },
 ): uPlot.Options {
   const pan = panPlugin(bounds.minMs / 1000, bounds.maxMs / 1000)
+  const wheel = wheelZoomPlugin(bounds.minMs / 1000, bounds.maxMs / 1000)
   const series: uPlot.Series[] =
     mode === 'candles'
       ? [
@@ -188,6 +201,6 @@ export function makeOptions(
         },
       ],
     },
-    plugins: mode === 'candles' ? [candlestickPlugin(), wheelZoomPlugin(), pan] : [wheelZoomPlugin(), pan],
+    plugins: mode === 'candles' ? [candlestickPlugin(), wheel, pan] : [wheel, pan],
   }
 }

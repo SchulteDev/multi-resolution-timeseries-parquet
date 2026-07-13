@@ -4,9 +4,10 @@ import './style.css'
 import { loadManifest } from './manifest'
 import { selectFiles, type Manifest } from '../shared/manifest'
 import { rollup } from '../shared/ohlc'
+import { bucketStart } from '../shared/time'
 import { resolveRender } from '../shared/renderResolutions'
 import { loadRange } from './dataLoader'
-import { buildData, emptyData, makeOptions, type ChartMode } from './chart'
+import { buildData, columnsForMode, emptyData, makeOptions, type ChartMode } from './chart'
 import { initUI, currentMode, currentResolution, updateStats, setStatus } from './ui'
 
 // Fraction of the visible span pre-fetched on each side, so panning within the
@@ -29,6 +30,7 @@ async function main() {
   let view = { min: manifest.globalStart, max: manifest.globalEnd }
   let loaded = { start: 0, end: -1, sourceRes: '', renderKey: '' }
   let reloadTimer: number | undefined
+  let loadSeq = 0 // monotonic; a stale load whose seq is superseded must not apply
 
   const size = () => {
     // Fall back to the parent width; guard against a zero measurement taken
@@ -51,30 +53,36 @@ async function main() {
   }
 
   async function load(minMs: number, maxMs: number) {
+    const seq = ++loadSeq
     const p = planFor(minMs, maxMs)
-    const sourceTier = manifest.tiers.find((t) => t.res === p.render.sourceRes)!
-    const columns = mode === 'candles' ? ['ts', 'open', 'high', 'low', 'close'] : ['ts', 'close']
-    const files = selectFiles(sourceTier, p.t0, p.t1)
+    const sourceTier = manifest.tiers.find((t) => t.res === p.render.sourceRes)
+    if (!sourceTier) {
+      throw new Error(`Manifest has no '${p.render.sourceRes}' tier for resolution '${p.render.key}'`)
+    }
+    const columns = columnsForMode(mode)
+
+    // For a derived resolution, widen the read to whole render-buckets so the
+    // edge bars are complete — otherwise the first/last resampled candle is
+    // built from a partial set of source rows and its OHLC is wrong.
+    let readT0 = p.t0
+    let readT1 = p.t1
+    if (p.render.derived) {
+      readT0 = bucketStart(p.t0, p.render.bucketMs)
+      readT1 = bucketStart(p.t1, p.render.bucketMs) + p.render.bucketMs
+    }
+    const files = selectFiles(sourceTier, readT0, readT1)
 
     setStatus('loading…')
-    const base = await loadRange(sourceTier, p.t0, p.t1, columns, files)
+    const base = await loadRange(sourceTier, readT0, readT1, columns, files)
+    if (seq !== loadSeq) return // a newer load started while we awaited; drop this one
 
     // Resample in-browser for derived resolutions, using the same rollup() that
     // built the stored tiers.
-    let bars = base.rowsLoaded
-    let data
-    if (p.render.derived) {
-      const agg = rollup(
-        { ts: base.ts, open: base.open, high: base.high, low: base.low, close: base.close },
-        p.render.bucketMs,
-      )
-      bars = agg.ts.length
-      data = buildData(mode, { ...agg, rowsLoaded: bars, filesTouched: base.filesTouched, bytesFetched: base.bytesFetched })
-    } else {
-      data = buildData(mode, base)
-    }
+    const series = p.render.derived ? rollup(base, p.render.bucketMs) : base
+    const bars = series.ts.length
+    const data = buildData(mode, series)
 
-    loaded = { start: p.t0, end: p.t1, sourceRes: p.render.sourceRes, renderKey: p.render.key }
+    loaded = { start: readT0, end: readT1, sourceRes: p.render.sourceRes, renderKey: p.render.key }
 
     applying = true
     // resetScales=true ranges the scales to the loaded (margin-padded) data;
@@ -108,12 +116,21 @@ async function main() {
     }
   }
 
+  // Interactive reloads are fire-and-forget; surface failures to the user
+  // instead of leaving the status stuck on "loading…".
+  function safeLoad(minMs: number, maxMs: number) {
+    load(minMs, maxMs).catch((err) => {
+      console.error(err)
+      setStatus(`load failed: ${err?.message ?? err}`)
+    })
+  }
+
   function onView(minMs: number, maxMs: number) {
     if (applying) return
     view = { min: minMs, max: maxMs }
     window.clearTimeout(reloadTimer)
     reloadTimer = window.setTimeout(() => {
-      if (needsReload(minMs, maxMs)) void load(minMs, maxMs)
+      if (needsReload(minMs, maxMs)) safeLoad(minMs, maxMs)
     }, 100)
   }
 
@@ -132,11 +149,11 @@ async function main() {
     (nextMode) => {
       mode = nextMode
       build() // series structure depends on candle/line mode
-      void load(view.min, view.max)
+      safeLoad(view.min, view.max)
     },
     (nextResolution) => {
       resolution = nextResolution
-      void load(view.min, view.max) // resolution change: reload, no chart rebuild
+      safeLoad(view.min, view.max) // resolution change: reload, no chart rebuild
     },
   )
 

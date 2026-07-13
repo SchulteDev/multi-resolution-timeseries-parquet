@@ -1,9 +1,10 @@
 import type { ChartMode } from './chart'
+import type { Resolution } from '../shared/time'
 
 export interface StatView {
   resLabel: string
   derived: boolean
-  sourceRes: string
+  sourceRes: Resolution
   rowsRead: number
   bars: number
   filesTouched: number

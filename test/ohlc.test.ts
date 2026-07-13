@@ -1,9 +1,20 @@
 import { describe, it, expect } from 'vitest'
 import { RES } from '../shared/time'
-import { rollup, type Series } from '../shared/ohlc'
+import { rollup, emptySeries, type Series } from '../shared/ohlc'
 import { generateMinuteSeries } from '../scripts/lib/synth'
 
 describe('rollup', () => {
+  it('returns an empty series for empty input', () => {
+    expect(rollup(emptySeries(), RES['15min'])).toEqual(emptySeries())
+  })
+
+  it('passes a single bar through as one bucket', () => {
+    const one: Series = { ts: [900_000], open: [5], high: [7], low: [4], close: [6] }
+    const out = rollup(one, RES['15min'])
+    expect(out.ts).toEqual([900_000])
+    expect(out).toEqual({ ts: [900_000], open: [5], high: [7], low: [4], close: [6] })
+  })
+
   it('computes OHLC as first/max/min/last within a bucket', () => {
     // Three 1-min bars inside a single 15-min bucket.
     const src: Series = {

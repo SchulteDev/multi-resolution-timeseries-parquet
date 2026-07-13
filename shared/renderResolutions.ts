@@ -64,9 +64,13 @@ export function resolveRender(
   const t0 = Math.max(globalStart, minMs - pad)
   const t1 = Math.min(globalEnd, maxMs + pad)
 
+  const sourceRows = (res: Resolution) => (t1 - t0) / RES[res]
+
+  // RENDER_BY_KEY has no 'auto' key, so an 'auto' (or unknown) mode falls
+  // through to the auto tier, which selectTier guarantees is a stored key.
   const autoKey = selectTier(span).res
-  const requested = mode === 'auto' ? RENDER_BY_KEY[autoKey] : (RENDER_BY_KEY[mode] ?? RENDER_BY_KEY[autoKey])
-  const requestedSourceRows = (t1 - t0) / RES[requested.sourceRes]
+  const requested = RENDER_BY_KEY[mode] ?? RENDER_BY_KEY[autoKey]
+  const requestedSourceRows = sourceRows(requested.sourceRes)
 
   let render = requested
   let downgraded = false
@@ -82,6 +86,6 @@ export function resolveRender(
     downgraded,
     t0,
     t1,
-    sourceRowsNeeded: (t1 - t0) / RES[render.sourceRes],
+    sourceRowsNeeded: sourceRows(render.sourceRes),
   }
 }

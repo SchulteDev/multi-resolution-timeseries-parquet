@@ -1,6 +1,6 @@
 import { asyncBufferFromUrl, parquetReadObjects, parquetMetadataAsync } from 'hyparquet'
 import type { AsyncBuffer, FileMetaData } from 'hyparquet'
-import type { FileInfo, TierInfo } from '../shared/manifest'
+import { rowRange, type FileInfo, type TierInfo } from '../shared/manifest'
 import { assetUrl } from './manifest'
 
 export interface LoadResult {
@@ -20,7 +20,7 @@ interface CachedFile {
   metadata: FileMetaData
 }
 
-// Our Parquet footers are only ~1-7 KB. hyparquet's default metadata read
+// Our Parquet footers are only ~0.5-7 KB. hyparquet's default metadata read
 // grabs the last 512 KB to locate the footer — for our small files that would
 // dominate every load. 16 KB covers every tier's footer with headroom, and
 // hyparquet issues a second request if a footer ever exceeds it.
@@ -39,7 +39,7 @@ function countingWrapper(raw: AsyncBuffer): { buffer: AsyncBuffer; counter: { by
     byteLength: raw.byteLength,
     slice: async (start, end) => {
       const buf = await raw.slice(start, end)
-      counter.bytes += (end ?? raw.byteLength) - start
+      counter.bytes += buf.byteLength // count bytes actually received, not requested
       return buf
     },
   }
@@ -52,14 +52,20 @@ async function getFile(file: FileInfo): Promise<{ entry: CachedFile; footerBytes
   const existing = cache.get(file.path)
   if (existing) return { entry: existing, footerBytes: 0 }
 
-  // Pass byteLength from the manifest so hyparquet skips the HEAD request.
-  const raw = await asyncBufferFromUrl({ url: assetUrl(file.path), byteLength: file.bytes })
-  const { buffer, counter } = countingWrapper(raw)
-  const metadata = await parquetMetadataAsync(buffer, { initialFetchSize: FOOTER_FETCH_SIZE })
-  const footerBytes = counter.bytes
-  const entry: CachedFile = { buffer, counter, metadata }
-  cache.set(file.path, entry)
-  return { entry, footerBytes }
+  try {
+    // Pass byteLength from the manifest so hyparquet skips the HEAD request.
+    const raw = await asyncBufferFromUrl({ url: assetUrl(file.path), byteLength: file.bytes })
+    const { buffer, counter } = countingWrapper(raw)
+    const metadata = await parquetMetadataAsync(buffer, { initialFetchSize: FOOTER_FETCH_SIZE })
+    const footerBytes = counter.bytes
+    const entry: CachedFile = { buffer, counter, metadata }
+    cache.set(file.path, entry)
+    return { entry, footerBytes }
+  } catch (err) {
+    // Attach the path/size so a 404 or stale manifest is diagnosable rather
+    // than a bare hyparquet offset error.
+    throw new Error(`Failed to read ${file.path} (${file.bytes} B): ${(err as Error).message}`)
+  }
 }
 
 /**
@@ -81,9 +87,9 @@ export async function loadRange(
   }
 
   for (const file of files) {
-    const rowStart = Math.max(0, Math.floor((t0 - file.start) / tier.bucketMs))
-    const rowEnd = Math.min(file.rows, Math.floor((t1 - file.start) / tier.bucketMs) + 1)
-    if (rowEnd <= rowStart) continue
+    const range = rowRange(file, tier.bucketMs, t0, t1)
+    if (!range) continue
+    const { rowStart, rowEnd } = range
 
     const { entry, footerBytes } = await getFile(file)
     const before = entry.counter.bytes

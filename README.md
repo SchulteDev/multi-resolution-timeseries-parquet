@@ -44,7 +44,7 @@ The full 1-min tier is **~53 MB** on disk. Two independent Parquet features are 
 - **hyparquet, not DuckDB-WASM.** DuckDB-WASM's value is ad-hoc SQL in the browser — the exact thing we avoid, since aggregating years of 1-min data on every zoom means scanning millions of rows. Once data is pre-aggregated, a multi-MB WASM binary buys nothing. hyparquet is pure JS, tiny, and purpose-built to read Parquet over HTTP range requests.
 - **snappy, so the read path stays dependency-free.** Tiers are written snappy, which hyparquet decodes natively — no `hyparquet-compressors`.
 - **Sort by timestamp; tune row-group size.** Row-group min/max stats only enable skipping if data is time-ordered. The default ~128 MB row group is far too coarse for ranged reads, so tiers use ~10k-row groups for fine skip granularity.
-- **Partition by time, not one giant file.** The 1-min tier is split into monthly files (~850 KB each) so any single footer stays tiny; coarser tiers are single files. The frontend picks files from `manifest.json`, never by naming convention.
+- **Partition by time, not one giant file.** The 1-min tier is split into monthly files (~900 KB each) so any single footer stays tiny; coarser tiers are single files. The frontend picks files from `manifest.json`, never by naming convention.
 - **`BASE_URL` is one config value.** Local ↔ GitHub Pages ↔ Azure Blob is a one-line switch (`VITE_BASE`).
 
 ## Run it locally
@@ -101,7 +101,7 @@ On every zoom (`src/main.ts` + `shared/tierSelect.ts`):
 3. **Compute the row range arithmetically** — because the data is gapless and regular, `rowStart/rowEnd` come from `(t − fileStart) / bucketMs`, no value scan. hyparquet then fetches only the row groups overlapping that range.
 4. **Project columns** — candles read O/H/L/C; line reads only `close`.
 
-Footers are read once (16 KB, since ours are ~2–7 KB — far below hyparquet's 512 KB default) and cached; a `slice`-counting wrapper reports bytes fetched so the savings are visible.
+Footers are read once (16 KB, since ours are ~0.5–7 KB — far below hyparquet's 512 KB default) and cached; a `slice`-counting wrapper reports bytes fetched so the savings are visible.
 
 ## Derived resolutions — not every resolution needs a tier
 
@@ -121,7 +121,7 @@ The included workflow (`.github/workflows/deploy.yml`) runs on push to `main`:
 1. **`test`** — `npm run build` (typecheck + bundle) and `npm test`. This gates everything; a breaking dependency bump (Renovate) fails here before it can ship.
 2. **`deploy`** — `npm run generate` (tiers are built in CI, never committed), `npm run build` with `VITE_BASE` set to the project sub-path, then upload + deploy to Pages.
 
-One-time setup: **Settings → Pages → Source: GitHub Actions**. GitHub Pages serves over Fastly with `Accept-Ranges: bytes`, same-origin — no CORS to configure. Pages' 100 MB per-file limit is trivially satisfied (the coarse tiers are tiny; monthly 1-min files are ~850 KB).
+One-time setup: **Settings → Pages → Source: GitHub Actions**. GitHub Pages serves over Fastly with `Accept-Ranges: bytes`, same-origin — no CORS to configure. Pages' 100 MB per-file limit is trivially satisfied (the coarse tiers are tiny; monthly 1-min files are ~900 KB).
 
 ## Azure Blob Storage (production)
 
