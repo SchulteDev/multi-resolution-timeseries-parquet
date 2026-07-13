@@ -29,6 +29,7 @@ function writeParquet(relPath: string, series: Series): FileInfo {
     start: series.ts[0],
     end: series.ts[series.ts.length - 1],
     rows: seriesLength(series),
+    bytes: buf.byteLength,
   }
 }
 

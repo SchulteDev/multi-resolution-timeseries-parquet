@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Multi-resolution time-series Parquet</title>
+  </head>
+  <body>
+    <header>
+      <h1>Years of high-frequency time-series, no backend</h1>
+      <p class="tagline">
+        Pre-aggregated Parquet tiers on static storage. The chart picks the resolution matching the
+        visible span and reads it with HTTP range requests — no database, no query engine.
+      </p>
+    </header>
+
+    <main>
+      <div class="toolbar">
+        <div class="modes">
+          <label><input type="radio" name="mode" id="mode-candles" checked /> Candles <span class="cols">(5 cols)</span></label>
+          <label><input type="radio" name="mode" id="mode-line" /> Line <span class="cols">(2 cols)</span></label>
+        </div>
+        <div class="status" id="status">loading…</div>
+      </div>
+
+      <div id="chart"></div>
+
+      <dl class="stats">
+        <div><dt>Tier</dt><dd id="stat-tier">—</dd></div>
+        <div><dt>Points on screen</dt><dd id="stat-points">—</dd></div>
+        <div><dt>Rows loaded</dt><dd id="stat-rows">—</dd></div>
+        <div><dt>Files touched</dt><dd id="stat-files">—</dd></div>
+        <div><dt>Bytes fetched</dt><dd id="stat-bytes">—</dd></div>
+      </dl>
+
+      <p class="hint">
+        Full 1-min tier on disk is ~53&nbsp;MB. Watch <strong>Bytes fetched</strong> stay tiny as you
+        zoom, and drop further when you switch to <em>Line</em> (which reads only the <code>close</code>
+        column).
+      </p>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

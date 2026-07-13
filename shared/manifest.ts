@@ -7,6 +7,7 @@ export interface FileInfo {
   start: number
   end: number
   rows: number
+  bytes: number // file size, so the reader can skip a HEAD request
 }
 
 export interface TierInfo {

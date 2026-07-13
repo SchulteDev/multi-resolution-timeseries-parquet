@@ -31,9 +31,9 @@ describe('selectFiles', () => {
     res: '1min',
     bucketMs: RES['1min'],
     files: [
-      { path: 'data/1min/2020-01.parquet', start: 0, end: 100, rows: 101 },
-      { path: 'data/1min/2020-02.parquet', start: 101, end: 200, rows: 100 },
-      { path: 'data/1min/2020-03.parquet', start: 201, end: 300, rows: 100 },
+      { path: 'data/1min/2020-01.parquet', start: 0, end: 100, rows: 101, bytes: 1000 },
+      { path: 'data/1min/2020-02.parquet', start: 101, end: 200, rows: 100, bytes: 1000 },
+      { path: 'data/1min/2020-03.parquet', start: 201, end: 300, rows: 100, bytes: 1000 },
     ],
   }
 
