@@ -16,9 +16,23 @@
 
     <main>
       <div class="toolbar">
-        <div class="modes">
-          <label><input type="radio" name="mode" id="mode-candles" checked /> Candles <span class="cols">(5 cols)</span></label>
-          <label><input type="radio" name="mode" id="mode-line" /> Line <span class="cols">(2 cols)</span></label>
+        <div class="controls">
+          <label class="control">Resolution
+            <select id="res-select">
+              <option value="auto">Auto (by zoom)</option>
+              <option value="1min">1 min</option>
+              <option value="2min">2 min ✷</option>
+              <option value="5min">5 min ✷</option>
+              <option value="15min">15 min</option>
+              <option value="1h">1 hour</option>
+              <option value="4h">4 hours ✷</option>
+              <option value="1d">1 day</option>
+            </select>
+          </label>
+          <div class="modes">
+            <label><input type="radio" name="mode" id="mode-candles" checked /> Candles <span class="cols">(5 cols)</span></label>
+            <label><input type="radio" name="mode" id="mode-line" /> Line <span class="cols">(2 cols)</span></label>
+          </div>
         </div>
         <div class="status" id="status">loading…</div>
       </div>
@@ -26,17 +40,21 @@
       <div id="chart"></div>
 
       <dl class="stats">
-        <div><dt>Tier</dt><dd id="stat-tier">—</dd></div>
-        <div><dt>Points on screen</dt><dd id="stat-points">—</dd></div>
-        <div><dt>Rows loaded</dt><dd id="stat-rows">—</dd></div>
+        <div><dt>Resolution</dt><dd id="stat-res">—</dd></div>
+        <div><dt>Source tier</dt><dd id="stat-source">—</dd></div>
+        <div><dt>Rows read → bars</dt><dd id="stat-bars">—</dd></div>
         <div><dt>Files touched</dt><dd id="stat-files">—</dd></div>
         <div><dt>Bytes fetched</dt><dd id="stat-bytes">—</dd></div>
       </dl>
 
       <p class="hint">
-        Full 1-min tier on disk is ~53&nbsp;MB. Watch <strong>Bytes fetched</strong> stay tiny as you
-        zoom, and drop further when you switch to <em>Line</em> (which reads only the <code>close</code>
-        column).
+        <strong>✷ = resampled in-browser</strong> from a stored tier — no Parquet tier of its own.
+        2&nbsp;min / 5&nbsp;min are rolled up from the stored <code>1min</code> tier and 4&nbsp;hours
+        from <code>1h</code>, using the same aggregation that builds the tiers. It only works while the
+        source read stays bounded: pick a ✷ resolution zoomed out and it tells you it would read too
+        much — that's where a precomputed tier earns its place. Full 1-min tier on disk is ~53&nbsp;MB;
+        watch <strong>Bytes fetched</strong> stay tiny, and drop again in <em>Line</em> mode (only the
+        <code>close</code> column).
       </p>
     </main>
 

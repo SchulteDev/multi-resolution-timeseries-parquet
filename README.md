@@ -103,6 +103,17 @@ On every zoom (`src/main.ts` + `shared/tierSelect.ts`):
 
 Footers are read once (16 KB, since ours are ~2–7 KB — far below hyparquet's 512 KB default) and cached; a `slice`-counting wrapper reports bytes fetched so the savings are visible.
 
+## Derived resolutions — not every resolution needs a tier
+
+The **Resolution** picker offers `Auto` (zoom-driven stored tiers) plus explicit resolutions, including **2 min ✷ / 5 min ✷ / 4 hours ✷** that have *no stored Parquet tier*. These are **resampled in the browser** from the nearest finer stored tier — 2/5 min from `1min`, 4 h from `1h` — using the **same `rollup()` that builds the tiers on the write path**. OHLC composes, so the result is identical to a stored tier would be; the aggregation just runs wherever it's cheapest.
+
+This shows the honest boundary of the whole approach:
+
+- **Where it works:** while the source read stays bounded, deriving a resolution client-side is free — no extra tier to generate, store, or compact. Pick `5 min` zoomed into a few days and the stats show e.g. *11,521 `1min` rows read → 2,305 `5 min` bars* drawn.
+- **Where it doesn't:** pick a ✷ resolution zoomed way out and it refuses — *"5 min would resample ~446,400 1min rows here — too wide, showing 1 day instead"* — and falls back to auto tiering. That refusal **is** the argument for precomputed tiers: past a read budget (`MAX_SOURCE_ROWS`), you precompute.
+
+So the demo argues both directions: precompute the coarse tiers that would otherwise scan millions of rows, and resample the in-between resolutions on the fly when the window is small enough.
+
 ## Deploy to GitHub Pages
 
 The included workflow (`.github/workflows/deploy.yml`) runs on push to `main`:

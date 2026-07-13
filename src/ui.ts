@@ -1,9 +1,11 @@
 import type { ChartMode } from './chart'
 
 export interface StatView {
-  tier: string
-  estPoints: number
-  rowsLoaded: number
+  resLabel: string
+  derived: boolean
+  sourceRes: string
+  rowsRead: number
+  bars: number
   filesTouched: number
   bytesFetched: number
 }
@@ -16,15 +18,25 @@ function fmtBytes(n: number): string {
 
 const el = (id: string) => document.getElementById(id)!
 
-export function initUI(onModeChange: (mode: ChartMode) => void): void {
+export function initUI(
+  onModeChange: (mode: ChartMode) => void,
+  onResolutionChange: (resolution: string) => void,
+): void {
   const candles = el('mode-candles') as HTMLInputElement
   const line = el('mode-line') as HTMLInputElement
   candles.addEventListener('change', () => candles.checked && onModeChange('candles'))
   line.addEventListener('change', () => line.checked && onModeChange('line'))
+
+  const res = el('res-select') as HTMLSelectElement
+  res.addEventListener('change', () => onResolutionChange(res.value))
 }
 
 export function currentMode(): ChartMode {
   return (el('mode-line') as HTMLInputElement).checked ? 'line' : 'candles'
+}
+
+export function currentResolution(): string {
+  return (el('res-select') as HTMLSelectElement).value
 }
 
 export function setStatus(text: string): void {
@@ -32,9 +44,11 @@ export function setStatus(text: string): void {
 }
 
 export function updateStats(s: StatView): void {
-  el('stat-tier').textContent = s.tier
-  el('stat-points').textContent = Math.round(s.estPoints).toLocaleString()
-  el('stat-rows').textContent = s.rowsLoaded.toLocaleString()
+  el('stat-res').textContent = s.resLabel + (s.derived ? ' ✷' : '')
+  el('stat-source').textContent = s.derived ? `${s.sourceRes} (resampled)` : `${s.sourceRes} (stored)`
+  el('stat-bars').textContent = s.derived
+    ? `${s.rowsRead.toLocaleString()} → ${s.bars.toLocaleString()}`
+    : s.bars.toLocaleString()
   el('stat-files').textContent = String(s.filesTouched)
   el('stat-bytes').textContent = fmtBytes(s.bytesFetched)
 }

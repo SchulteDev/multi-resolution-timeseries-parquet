@@ -3,24 +3,31 @@ import 'uplot/dist/uPlot.min.css'
 import './style.css'
 import { loadManifest } from './manifest'
 import { selectFiles, type Manifest } from '../shared/manifest'
-import { selectTier } from '../shared/tierSelect'
+import { rollup } from '../shared/ohlc'
+import { resolveRender } from '../shared/renderResolutions'
 import { loadRange } from './dataLoader'
 import { buildData, emptyData, makeOptions, type ChartMode } from './chart'
-import { initUI, currentMode, updateStats, setStatus } from './ui'
+import { initUI, currentMode, currentResolution, updateStats, setStatus } from './ui'
 
 // Fraction of the visible span pre-fetched on each side, so panning within the
 // margin costs no new request.
 const MARGIN = 0.5
+
+// Cap on rows read from a source tier for an explicitly-chosen resolution.
+// Beyond this, a derived resolution isn't worth resampling client-side — that's
+// where a precomputed tier earns its place — so we fall back to auto tiering.
+const MAX_SOURCE_ROWS = 20_000
 
 async function main() {
   const manifest: Manifest = await loadManifest()
   const chartEl = document.getElementById('chart')!
 
   let mode: ChartMode = currentMode()
+  let resolution = currentResolution() // 'auto' | render-resolution key
   let chart: uPlot
   let applying = false // guard: ignore scale hooks we trigger ourselves
   let view = { min: manifest.globalStart, max: manifest.globalEnd }
-  let loaded = { start: 0, end: -1, res: '' }
+  let loaded = { start: 0, end: -1, sourceRes: '', renderKey: '' }
   let reloadTimer: number | undefined
 
   const size = () => {
@@ -30,45 +37,75 @@ async function main() {
     return { width: Math.max(320, w), height: Math.max(320, Math.round(w * 0.45)) }
   }
 
-  function tierFor(spanMs: number) {
-    const choice = selectTier(spanMs)
-    const tier = manifest.tiers.find((t) => t.res === choice.res)!
-    return { choice, tier }
-  }
+  const planFor = (minMs: number, maxMs: number) =>
+    resolveRender(resolution, minMs, maxMs, manifest.globalStart, manifest.globalEnd, MARGIN, MAX_SOURCE_ROWS)
 
   function needsReload(minMs: number, maxMs: number): boolean {
-    const { tier } = tierFor(maxMs - minMs)
-    return tier.res !== loaded.res || minMs < loaded.start || maxMs > loaded.end
+    const p = planFor(minMs, maxMs)
+    return (
+      p.render.key !== loaded.renderKey ||
+      p.render.sourceRes !== loaded.sourceRes ||
+      minMs < loaded.start ||
+      maxMs > loaded.end
+    )
   }
 
   async function load(minMs: number, maxMs: number) {
-    const span = maxMs - minMs
-    const { choice, tier } = tierFor(span)
-    const pad = span * MARGIN
-    const t0 = Math.max(manifest.globalStart, minMs - pad)
-    const t1 = Math.min(manifest.globalEnd, maxMs + pad)
+    const p = planFor(minMs, maxMs)
+    const sourceTier = manifest.tiers.find((t) => t.res === p.render.sourceRes)!
     const columns = mode === 'candles' ? ['ts', 'open', 'high', 'low', 'close'] : ['ts', 'close']
-    const files = selectFiles(tier, t0, t1)
+    const files = selectFiles(sourceTier, p.t0, p.t1)
 
     setStatus('loading…')
-    const result = await loadRange(tier, t0, t1, columns, files)
-    loaded = { start: t0, end: t1, res: tier.res }
+    const base = await loadRange(sourceTier, p.t0, p.t1, columns, files)
+
+    // Resample in-browser for derived resolutions, using the same rollup() that
+    // built the stored tiers.
+    let bars = base.rowsLoaded
+    let data
+    if (p.render.derived) {
+      const agg = rollup(
+        { ts: base.ts, open: base.open, high: base.high, low: base.low, close: base.close },
+        p.render.bucketMs,
+      )
+      bars = agg.ts.length
+      data = buildData(mode, { ...agg, rowsLoaded: bars, filesTouched: base.filesTouched, bytesFetched: base.bytesFetched })
+    } else {
+      data = buildData(mode, base)
+    }
+
+    loaded = { start: p.t0, end: p.t1, sourceRes: p.render.sourceRes, renderKey: p.render.key }
 
     applying = true
     // resetScales=true ranges the scales to the loaded (margin-padded) data;
     // then narrow x to the visible window — uPlot re-ranges auto-y to the view.
-    chart.setData(buildData(mode, result))
+    chart.setData(data)
     chart.setScale('x', { min: minMs / 1000, max: maxMs / 1000 })
     applying = false
 
     updateStats({
-      tier: tier.res,
-      estPoints: choice.estPoints,
-      rowsLoaded: result.rowsLoaded,
-      filesTouched: result.filesTouched,
-      bytesFetched: result.bytesFetched,
+      resLabel: p.render.label,
+      derived: p.render.derived,
+      sourceRes: p.render.sourceRes,
+      rowsRead: base.rowsLoaded,
+      bars,
+      filesTouched: base.filesTouched,
+      bytesFetched: base.bytesFetched,
     })
-    setStatus('idle — drag to zoom, wheel to zoom, double-click to reset')
+
+    if (p.downgraded) {
+      setStatus(
+        `${p.requested.label} would resample ~${Math.round(p.requestedSourceRows).toLocaleString()} ` +
+          `${p.requested.sourceRes} rows here — too wide, showing ${p.render.label} instead. Zoom in.`,
+      )
+    } else if (p.render.derived) {
+      setStatus(
+        `resampled ${base.rowsLoaded.toLocaleString()} ${p.render.sourceRes} rows → ` +
+          `${bars.toLocaleString()} ${p.render.label} bars in-browser`,
+      )
+    } else {
+      setStatus('idle — drag/wheel to zoom, double-click to reset')
+    }
   }
 
   function onView(minMs: number, maxMs: number) {
@@ -84,14 +121,20 @@ async function main() {
     if (chart) chart.destroy()
     const { width, height } = size()
     chart = new uPlot(makeOptions(mode, width, height, onView), emptyData(mode), chartEl)
-    loaded = { start: 0, end: -1, res: '' } // force a reload for the new mode
+    loaded = { start: 0, end: -1, sourceRes: '', renderKey: '' } // force reload
   }
 
-  initUI((next) => {
-    mode = next
-    build()
-    void load(view.min, view.max)
-  })
+  initUI(
+    (nextMode) => {
+      mode = nextMode
+      build() // series structure depends on candle/line mode
+      void load(view.min, view.max)
+    },
+    (nextResolution) => {
+      resolution = nextResolution
+      void load(view.min, view.max) // resolution change: reload, no chart rebuild
+    },
+  )
 
   build()
   await load(manifest.globalStart, manifest.globalEnd)
