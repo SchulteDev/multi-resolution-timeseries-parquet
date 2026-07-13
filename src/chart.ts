@@ -53,6 +53,66 @@ function candlestickPlugin(): uPlot.Plugin {
   return { hooks: { draw: [draw] } }
 }
 
+// Shift + left-drag to pan the x-axis. Plain left-drag stays uPlot's native
+// zoom-to-selection, so panning must live on a different gesture. We preempt
+// uPlot's own mousedown (capture phase on document) only while Shift is held,
+// then shift the x-scale by the drag delta, clamped to the data bounds.
+function panPlugin(minSec: number, maxSec: number): uPlot.Plugin {
+  let u: uPlot | undefined
+  let panning = false
+  let startClientX = 0
+  let xMin0 = 0
+  let xMax0 = 0
+  let secPerPx = 0
+
+  const onDown = (e: MouseEvent) => {
+    if (!u || e.button !== 0 || !e.shiftKey) return
+    if (!(e.target instanceof Node) || !u.over.contains(e.target)) return
+    e.stopImmediatePropagation() // keep uPlot from starting a zoom-selection
+    e.preventDefault()
+    const rect = u.over.getBoundingClientRect()
+    startClientX = e.clientX
+    xMin0 = u.scales.x.min as number
+    xMax0 = u.scales.x.max as number
+    secPerPx = (xMax0 - xMin0) / rect.width
+    panning = true
+    u.over.style.cursor = 'grabbing'
+  }
+
+  const onMove = (e: MouseEvent) => {
+    if (!panning || !u) return
+    const dv = -(e.clientX - startClientX) * secPerPx // drag right => earlier in time
+    const width = xMax0 - xMin0
+    let min = xMin0 + dv
+    let max = xMax0 + dv
+    if (min < minSec) [min, max] = [minSec, minSec + width]
+    if (max > maxSec) [min, max] = [maxSec - width, maxSec]
+    u.setScale('x', { min, max })
+  }
+
+  const onUp = () => {
+    if (!panning || !u) return
+    panning = false
+    u.over.style.cursor = ''
+  }
+
+  return {
+    hooks: {
+      ready: (self: uPlot) => {
+        u = self
+        document.addEventListener('mousedown', onDown, true)
+        window.addEventListener('mousemove', onMove)
+        window.addEventListener('mouseup', onUp)
+      },
+      destroy: () => {
+        document.removeEventListener('mousedown', onDown, true)
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      },
+    },
+  }
+}
+
 // Wheel to zoom the x-axis around the cursor (uPlot only drag-zooms by default).
 function wheelZoomPlugin(factor = 0.85): uPlot.Plugin {
   return {
@@ -97,7 +157,9 @@ export function makeOptions(
   width: number,
   height: number,
   onView: (minMs: number, maxMs: number) => void,
+  bounds: { minMs: number; maxMs: number },
 ): uPlot.Options {
+  const pan = panPlugin(bounds.minMs / 1000, bounds.maxMs / 1000)
   const series: uPlot.Series[] =
     mode === 'candles'
       ? [
@@ -126,6 +188,6 @@ export function makeOptions(
         },
       ],
     },
-    plugins: mode === 'candles' ? [candlestickPlugin(), wheelZoomPlugin()] : [wheelZoomPlugin()],
+    plugins: mode === 'candles' ? [candlestickPlugin(), wheelZoomPlugin(), pan] : [wheelZoomPlugin(), pan],
   }
 }

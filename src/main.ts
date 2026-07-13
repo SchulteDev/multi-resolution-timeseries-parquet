@@ -104,7 +104,7 @@ async function main() {
           `${bars.toLocaleString()} ${p.render.label} bars in-browser`,
       )
     } else {
-      setStatus('idle — drag/wheel to zoom, double-click to reset')
+      setStatus('idle — drag to zoom · Shift+drag to pan · wheel to zoom · double-click to reset')
     }
   }
 
@@ -120,7 +120,11 @@ async function main() {
   function build() {
     if (chart) chart.destroy()
     const { width, height } = size()
-    chart = new uPlot(makeOptions(mode, width, height, onView), emptyData(mode), chartEl)
+    chart = new uPlot(
+      makeOptions(mode, width, height, onView, { minMs: manifest.globalStart, maxMs: manifest.globalEnd }),
+      emptyData(mode),
+      chartEl,
+    )
     loaded = { start: 0, end: -1, sourceRes: '', renderKey: '' } // force reload
   }
 
