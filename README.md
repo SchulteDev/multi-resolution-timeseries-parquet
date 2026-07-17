@@ -67,8 +67,11 @@ npm run dev        # open the printed localhost URL
 ```bash
 npm test           # vitest — rollup/OHLC-composition, tier selection, CSV parsing, row-range math, write↔read round-trip
 npm run build      # tsc typecheck + vite production build into dist/
+npm run unpack     # gunzip data/raw/1min.csv.gz -> data/raw/1min.csv (105 MB) to inspect the raw input
 npm run reset      # delete generated output (public/data + dist); keeps data/raw, so `npm run generate` starts clean
 ```
+
+> `data/raw/1min.csv.gz` is a plain **gzip** stream, not a tar archive — `tar -x` on it will treat every CSV line as a filename. Use `npm run unpack` (or `gunzip -c`). The unpacked CSV is gitignored: at 105 MB it exceeds GitHub's 100 MB per-file limit, which is why the repo ships the 26 MB `.gz`.
 
 ## Project layout
 

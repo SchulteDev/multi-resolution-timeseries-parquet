@@ -8,3 +8,8 @@ public/data/
 
 # NOTE: data/raw/1min.csv.gz and data/sample/ ARE committed on purpose — the
 # raw CSV is the pipeline's input, not a build artifact.
+
+# ...but an *unpacked* raw CSV must never be committed: it's ~105 MB, which
+# exceeds GitHub's 100 MB per-file hard limit and would get the push rejected.
+# Unpack it locally to inspect it:  npm run unpack
+data/raw/*.csv
