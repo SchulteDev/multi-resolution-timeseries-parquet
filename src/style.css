@@ -18,9 +18,36 @@ body {
   color: var(--text);
 }
 
-header { max-width: 900px; margin: 0 auto; padding: 32px 0 16px; }
+header {
+  max-width: 1100px; /* match main, so the repo link lines up with the chart */
+  margin: 0 auto;
+  padding: 32px 0 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.header-main { min-width: 0; }
 h1 { font-size: clamp(20px, 3vw, 28px); margin: 0 0 8px; }
 .tagline { color: var(--muted); margin: 0; max-width: 70ch; }
+
+.repo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  text-decoration: none;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.repo-link:hover { border-color: var(--accent); color: var(--accent); }
+.repo-link svg { fill: currentColor; }
 
 main { max-width: 1100px; margin: 0 auto; }
 
