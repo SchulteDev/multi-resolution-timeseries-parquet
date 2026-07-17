@@ -1,5 +1,9 @@
 # multi-resolution-timeseries-parquet
 
+[![Build](https://github.com/SchulteDev/multi-resolution-timeseries-parquet/actions/workflows/deploy.yml/badge.svg)](https://github.com/SchulteDev/multi-resolution-timeseries-parquet/actions/workflows/deploy.yml)
+[![Renovate](https://img.shields.io/badge/renovate-enabled-brightgreen?logo=renovatebot)](https://developer.mend.io/github/SchulteDev/multi-resolution-timeseries-parquet)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
+
 **Serve years of high-frequency time-series to a browser chart — no backend, no database. Multi-resolution Parquet tiers + HTTP range requests.**
 
 [**▶ Live demo**](https://schultedev.github.io/multi-resolution-timeseries-parquet/)
@@ -43,6 +47,8 @@ Three mechanisms, each a line in the plan panel:
 - **Column projection** — candles → line drops O/H/L and fetches ~3× fewer bytes.
 
 ## Run it
+
+Needs Node 24.
 
 ```bash
 npm install
