@@ -54,7 +54,7 @@ jobs:
         env:
           # Serve from the project-pages sub-path.
           VITE_BASE: /multi-resolution-timeseries-parquet/
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
         with:
           # Enable Pages (source: GitHub Actions) on first run, using this
           # workflow's pages:write token — no manual repo-settings step needed.
