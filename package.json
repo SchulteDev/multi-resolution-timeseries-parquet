@@ -12,7 +12,7 @@
     "seed": "tsx scripts/seed.ts",
     "unpack": "tsx scripts/unpack.ts",
     "generate": "tsx scripts/generate.ts",
-    "reset": "node -e \"const fs=require('node:fs');for(const p of ['public/data','dist'])fs.rmSync(p,{recursive:true,force:true});console.log('reset: removed public/data and dist (data/raw kept). Next: npm run generate')\"",
+    "reset": "tsx scripts/reset.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
