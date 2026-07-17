@@ -39,22 +39,35 @@
 
       <div id="chart"></div>
 
-      <dl class="stats">
-        <div><dt>Resolution</dt><dd id="stat-res">—</dd></div>
-        <div><dt>Source tier</dt><dd id="stat-source">—</dd></div>
-        <div><dt>Rows read → bars</dt><dd id="stat-bars">—</dd></div>
-        <div><dt>Files touched</dt><dd id="stat-files">—</dd></div>
-        <div><dt>Bytes fetched</dt><dd id="stat-bytes">—</dd></div>
-      </dl>
+      <section class="explain">
+        <div class="explain-col">
+          <h2>The query</h2>
+          <pre id="sql">—</pre>
+          <p class="caption">
+            There is no SQL engine and no database. This is what the chart is <em>asking for</em> —
+            written the way you'd ask a database, to show that the same question gets answered by
+            file layout instead of a query planner.
+          </p>
+        </div>
+        <div class="explain-col">
+          <h2>How it was answered</h2>
+          <dl id="plan"></dl>
+          <p class="plan-note" id="plan-note" hidden></p>
+          <p class="caption">
+            Every zoom re-runs this. The footer's per-row-group min/max stats say which row groups can
+            be skipped; Parquet's columnar layout means unread columns are never fetched; both turn
+            into HTTP <code>Range</code> requests.
+          </p>
+        </div>
+      </section>
 
       <p class="hint">
         <strong>✷ = resampled in-browser</strong> from a stored tier — no Parquet tier of its own.
-        2&nbsp;min / 5&nbsp;min are rolled up from the stored <code>1min</code> tier and 4&nbsp;hours
-        from <code>1h</code>, using the same aggregation that builds the tiers. It only works while the
-        source read stays bounded: pick a ✷ resolution zoomed out and it tells you it would read too
-        much — that's where a precomputed tier earns its place. Full 1-min tier on disk is ~53&nbsp;MB;
-        watch <strong>Bytes fetched</strong> stay tiny, and drop again in <em>Line</em> mode (only the
-        <code>close</code> column).
+        2&nbsp;min / 5&nbsp;min roll up from the stored <code>1min</code> tier and 4&nbsp;hours from
+        <code>1h</code>, using the same aggregation that builds the tiers. It only works while the
+        source read stays bounded — pick a ✷ resolution zoomed out and it says so: that's where a
+        precomputed tier earns its place. Switch to <em>Line</em> to watch column projection drop the
+        bytes again.
       </p>
     </main>
 

@@ -1,6 +1,10 @@
 node_modules/
 dist/
+# Generated Parquet tiers — built from data/raw by `npm run generate`.
 public/data/
 *.log
 .DS_Store
 .claude/
+
+# NOTE: data/raw/1min.csv.gz and data/sample/ ARE committed on purpose — the
+# raw CSV is the pipeline's input, not a build artifact.

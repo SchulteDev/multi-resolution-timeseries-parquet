@@ -8,6 +8,7 @@ export interface FileInfo {
   end: number
   rows: number
   bytes: number // file size, so the reader can skip a HEAD request
+  footerBytes: number // exact metadata+trailer size, so the footer costs one minimal range request
 }
 
 export interface TierInfo {

@@ -47,6 +47,8 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      # The raw CSV is committed (data/raw), so the build only runs the
+      # pipeline: CSV -> Parquet tiers. No data is invented here.
       - run: npm run generate
       - run: npm run build
         env:

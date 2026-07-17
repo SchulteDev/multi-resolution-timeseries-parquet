@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
+    "seed": "tsx scripts/seed.ts",
     "generate": "tsx scripts/generate.ts",
     "test": "vitest run",
     "test:watch": "vitest"

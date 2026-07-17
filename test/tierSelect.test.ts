@@ -38,9 +38,9 @@ describe('selectFiles', () => {
     res: '1min',
     bucketMs: RES['1min'],
     files: [
-      { path: 'data/1min/2020-01.parquet', start: 0, end: 100, rows: 101, bytes: 1000 },
-      { path: 'data/1min/2020-02.parquet', start: 101, end: 200, rows: 100, bytes: 1000 },
-      { path: 'data/1min/2020-03.parquet', start: 201, end: 300, rows: 100, bytes: 1000 },
+      { path: 'data/1min/2020-01.parquet', start: 0, end: 100, rows: 101, bytes: 1000, footerBytes: 200 },
+      { path: 'data/1min/2020-02.parquet', start: 101, end: 200, rows: 100, bytes: 1000, footerBytes: 200 },
+      { path: 'data/1min/2020-03.parquet', start: 201, end: 300, rows: 100, bytes: 1000, footerBytes: 200 },
     ],
   }
 
@@ -61,8 +61,8 @@ describe('selectFiles', () => {
       res: '1min',
       bucketMs: RES['1min'],
       files: [
-        { path: 'a.parquet', start: 0, end: 100, rows: 101, bytes: 1 },
-        { path: 'b.parquet', start: 200, end: 300, rows: 101, bytes: 1 },
+        { path: 'a.parquet', start: 0, end: 100, rows: 101, bytes: 1, footerBytes: 1 },
+        { path: 'b.parquet', start: 200, end: 300, rows: 101, bytes: 1, footerBytes: 1 },
       ],
     }
     expect(selectFiles(gappy, -50, -10)).toEqual([]) // before all
@@ -73,7 +73,7 @@ describe('selectFiles', () => {
 
 describe('rowRange', () => {
   // 1-min file: 100 rows, row i covers ts = 1000 + i*60000.
-  const file: FileInfo = { path: 'f', start: 1000, end: 1000 + 99 * 60_000, rows: 100, bytes: 1 }
+  const file: FileInfo = { path: 'f', start: 1000, end: 1000 + 99 * 60_000, rows: 100, bytes: 1, footerBytes: 1 }
   const bucket = RES['1min']
 
   it('maps a time window to an inclusive/exclusive row range', () => {

@@ -1,21 +1,18 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { RES, RESOLUTIONS, type Resolution } from '../shared/time'
-import { rollup, seriesLength, type Series } from '../shared/ohlc'
+import { rollup, type Series } from '../shared/ohlc'
 import type { Manifest, FileInfo, TierInfo } from '../shared/manifest'
-import { generateMinuteSeries } from './lib/synth'
-import { partitionByMonth } from './lib/partition'
-import { serializeTier } from './lib/writeTier'
+import { OUT_DIR, RAW_CSV_PATH, SERIES, SERIES_START } from './lib/config'
+import { readCsv } from './lib/readCsv'
+import { footerBytes, serializeTier } from './lib/writeTier'
 
-// ---- Config -----------------------------------------------------------------
-const SERIES = 'SYNTH'
-const START = Date.UTC(2020, 0, 1)
-const END = Date.UTC(2025, 0, 1) // 5 years, 24/7
-const SEED = 42
+// The pipeline: raw CSV -> pre-aggregated Parquet tiers + manifest.
+//
+// Nothing is invented here — the 1-min bars come from data/raw/1min.csv.gz
+// (see scripts/seed.ts for how that demo CSV was made). Point RAW_CSV_PATH at
+// your own CSV with the same columns and this works unchanged.
 
-const OUT_DIR = join(process.cwd(), 'public', 'data')
-
-// ---- Helpers ----------------------------------------------------------------
 let totalBytes = 0
 
 function writeParquet(relPath: string, series: Series): FileInfo {
@@ -29,71 +26,62 @@ function writeParquet(relPath: string, series: Series): FileInfo {
     path: `data/${relPath.split('\\').join('/')}`,
     start: series.ts[0],
     end: series.ts[series.ts.length - 1],
-    rows: seriesLength(series),
+    rows: series.ts.length,
     bytes: buf.byteLength,
+    footerBytes: footerBytes(buf),
   }
 }
 
-function mb(bytes: number): string {
-  return `${(bytes / 1_048_576).toFixed(1)} MB`
-}
+const mb = (n: number) => `${(n / 1_048_576).toFixed(1)} MB`
+const kb = (n: number) => `${(n / 1024).toFixed(1)} KB`
 
-// ---- Build ------------------------------------------------------------------
-console.log(`Generating ${SERIES}: ${new Date(START).toISOString()} -> ${new Date(END).toISOString()}`)
-rmSync(OUT_DIR, { recursive: true, force: true })
-
-const minuteCount = (END - START) / RES['1min']
-if (minuteCount <= 0) throw new Error(`Empty range: START (${START}) must be before END (${END})`)
-console.time('generate 1min')
-const minute = generateMinuteSeries({ startMs: START, count: minuteCount, seed: SEED })
-console.timeEnd('generate 1min')
+// ---- 1. Read the raw CSV -----------------------------------------------------
+console.log(`Reading ${RAW_CSV_PATH.split(/[\\/]/).slice(-3).join('/')}`)
+console.time('read csv')
+const minute = await readCsv(RAW_CSV_PATH)
+console.timeEnd('read csv')
 console.log(`  1min bars: ${minute.ts.length.toLocaleString()}`)
 
-// Cascade coarser tiers from the next-finer one (OHLC composes -> exact).
+// ---- 2. Cascade the tiers ----------------------------------------------------
+// Coarser tiers are built from the next-finer one, not from the raw data:
+// OHLC composes, so the result is identical and far cheaper.
 console.time('rollup')
-const s15 = rollup(minute, RES['15min'])
-const s1h = rollup(s15, RES['1h'])
-const s1d = rollup(s1h, RES['1d'])
-console.timeEnd('rollup')
-
 const seriesByRes: Record<Resolution, Series> = {
   '1min': minute,
-  '15min': s15,
-  '1h': s1h,
-  '1d': s1d,
+  '15min': rollup(minute, RES['15min']),
+  '1h': rollup(rollup(minute, RES['15min']), RES['1h']),
+  '1d': rollup(rollup(rollup(minute, RES['15min']), RES['1h']), RES['1d']),
 }
+console.timeEnd('rollup')
+
+// ---- 3. Write one Parquet file per tier --------------------------------------
+// Deliberately a single file per tier — including the ~50 MB 1-min tier — so
+// the demo shows Parquet's own footer + row-group stats + range requests doing
+// the work, rather than a partition lookup doing it. See the README on why
+// production appends would partition instead.
+rmSync(OUT_DIR, { recursive: true, force: true })
 
 const tiers: TierInfo[] = []
-
 for (const res of RESOLUTIONS) {
   const series = seriesByRes[res]
-  const files: FileInfo[] = []
-
-  if (res === '1min') {
-    // Partition the big tier by month; keep the rest as a single file.
-    for (const part of partitionByMonth(series)) {
-      files.push(writeParquet(join('1min', `${part.key}.parquet`), part.series))
-    }
-  } else {
-    files.push(writeParquet(join(res, 'all.parquet'), series))
-  }
-
-  tiers.push({ res, bucketMs: RES[res], files })
-  console.log(`  ${res}: ${series.ts.length.toLocaleString()} rows across ${files.length} file(s)`)
+  const info = writeParquet(join(res, 'all.parquet'), series)
+  tiers.push({ res, bucketMs: RES[res], files: [info] })
+  console.log(
+    `  ${res.padEnd(5)}: ${series.ts.length.toLocaleString().padStart(9)} rows  ` +
+      `${mb(info.bytes).padStart(8)}  footer ${kb(info.footerBytes)}`,
+  )
 }
 
+// ---- 4. Manifest -------------------------------------------------------------
 const manifest: Manifest = {
   series: SERIES,
-  generatedAt: new Date(START).toISOString(), // deterministic (no wall clock)
+  generatedAt: new Date(SERIES_START).toISOString(), // deterministic (no wall clock)
   globalStart: minute.ts[0],
   globalEnd: minute.ts[minute.ts.length - 1],
   tiers,
 }
-
-const manifestJson = JSON.stringify(manifest, null, 2)
-const manifestBytes = new TextEncoder().encode(manifestJson)
+const manifestBytes = new TextEncoder().encode(JSON.stringify(manifest, null, 2))
 writeFileSync(join(OUT_DIR, 'manifest.json'), manifestBytes)
 totalBytes += manifestBytes.byteLength
 
-console.log(`\nWrote manifest with ${tiers.length} tiers to public/data/manifest.json`)
-console.log(`Done. Total on-disk: ${mb(totalBytes)}`)
+console.log(`\nWrote ${tiers.length} tiers + manifest to public/data. Total: ${mb(totalBytes)}`)

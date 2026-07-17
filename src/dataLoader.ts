@@ -12,19 +12,23 @@ export interface LoadResult {
   rowsLoaded: number
   filesTouched: number
   bytesFetched: number
+  requests: number // HTTP range requests issued
+  rowGroupsTotal: number // row groups in the touched file(s)
+  rowGroupsRead: number // row groups actually fetched; the rest are skipped
+  firstRowGroup: number
+  lastRowGroup: number
+}
+
+interface Counter {
+  bytes: number
+  requests: number
 }
 
 interface CachedFile {
   buffer: AsyncBuffer
-  counter: { bytes: number }
+  counter: Counter
   metadata: FileMetaData
 }
-
-// Our Parquet footers are only ~0.5-7 KB. hyparquet's default metadata read
-// grabs the last 512 KB to locate the footer — for our small files that would
-// dominate every load. 16 KB covers every tier's footer with headroom, and
-// hyparquet issues a second request if a footer ever exceeds it.
-const FOOTER_FETCH_SIZE = 1 << 14 // 16 KB
 
 // One AsyncBuffer + parsed footer per file, kept for the session. Caching the
 // metadata means footers are read once, not on every zoom.
@@ -33,34 +37,61 @@ const cache = new Map<string, CachedFile>()
 // Wrap an AsyncBuffer so every range request (slice) adds to a byte counter.
 // This is what makes column projection and tier selection *visible*: fewer
 // columns or a coarser tier => fewer bytes over the wire.
-function countingWrapper(raw: AsyncBuffer): { buffer: AsyncBuffer; counter: { bytes: number } } {
-  const counter = { bytes: 0 }
+function countingWrapper(raw: AsyncBuffer): { buffer: AsyncBuffer; counter: Counter } {
+  const counter: Counter = { bytes: 0, requests: 0 }
   const buffer: AsyncBuffer = {
     byteLength: raw.byteLength,
     slice: async (start, end) => {
       const buf = await raw.slice(start, end)
       counter.bytes += buf.byteLength // count bytes actually received, not requested
+      counter.requests++
       return buf
     },
   }
   return { buffer, counter }
 }
 
-// Returns the cached file plus how many bytes the footer read consumed (only
-// non-zero the first time a file is touched).
-async function getFile(file: FileInfo): Promise<{ entry: CachedFile; footerBytes: number }> {
+/**
+ * Which row groups a row range touches. hyparquet fetches only the row groups
+ * overlapping [rowStart, rowEnd) — this reports that same selection so the UI
+ * can show how many were skipped via the footer's min/max stats.
+ */
+function rowGroupsFor(metadata: FileMetaData, rowStart: number, rowEnd: number) {
+  let offset = 0
+  let read = 0
+  let first = -1
+  let last = -1
+  metadata.row_groups.forEach((rg, i) => {
+    const groupStart = offset
+    const groupEnd = offset + Number(rg.num_rows)
+    offset = groupEnd
+    if (groupEnd > rowStart && groupStart < rowEnd) {
+      read++
+      if (first < 0) first = i
+      last = i
+    }
+  })
+  return { total: metadata.row_groups.length, read, first, last }
+}
+
+// Returns the cached file plus what the footer read cost (only non-zero the
+// first time a file is touched — after that the metadata is cached).
+async function getFile(
+  file: FileInfo,
+): Promise<{ entry: CachedFile; footerBytes: number; footerRequests: number }> {
   const existing = cache.get(file.path)
-  if (existing) return { entry: existing, footerBytes: 0 }
+  if (existing) return { entry: existing, footerBytes: 0, footerRequests: 0 }
 
   try {
-    // Pass byteLength from the manifest so hyparquet skips the HEAD request.
+    // The manifest carries the exact file size and footer size, so the metadata
+    // read costs exactly one minimal range request — no HEAD, no 512 KB default
+    // tail fetch, no second request to cover an underestimated footer.
     const raw = await asyncBufferFromUrl({ url: assetUrl(file.path), byteLength: file.bytes })
     const { buffer, counter } = countingWrapper(raw)
-    const metadata = await parquetMetadataAsync(buffer, { initialFetchSize: FOOTER_FETCH_SIZE })
-    const footerBytes = counter.bytes
+    const metadata = await parquetMetadataAsync(buffer, { initialFetchSize: file.footerBytes })
     const entry: CachedFile = { buffer, counter, metadata }
     cache.set(file.path, entry)
-    return { entry, footerBytes }
+    return { entry, footerBytes: counter.bytes, footerRequests: counter.requests }
   } catch (err) {
     // Attach the path/size so a 404 or stale manifest is diagnosable rather
     // than a bare hyparquet offset error.
@@ -83,7 +114,8 @@ export async function loadRange(
 ): Promise<LoadResult> {
   const out: LoadResult = {
     ts: [], open: [], high: [], low: [], close: [],
-    rowsLoaded: 0, filesTouched: 0, bytesFetched: 0,
+    rowsLoaded: 0, filesTouched: 0, bytesFetched: 0, requests: 0,
+    rowGroupsTotal: 0, rowGroupsRead: 0, firstRowGroup: -1, lastRowGroup: -1,
   }
 
   for (const file of files) {
@@ -91,8 +123,9 @@ export async function loadRange(
     if (!range) continue
     const { rowStart, rowEnd } = range
 
-    const { entry, footerBytes } = await getFile(file)
-    const before = entry.counter.bytes
+    const { entry, footerBytes, footerRequests } = await getFile(file)
+    const beforeBytes = entry.counter.bytes
+    const beforeRequests = entry.counter.requests
     const rows = await parquetReadObjects({
       file: entry.buffer,
       metadata: entry.metadata,
@@ -100,8 +133,15 @@ export async function loadRange(
       rowStart,
       rowEnd,
     })
-    out.bytesFetched += footerBytes + (entry.counter.bytes - before)
+    out.bytesFetched += footerBytes + (entry.counter.bytes - beforeBytes)
+    out.requests += footerRequests + (entry.counter.requests - beforeRequests)
     out.filesTouched++
+
+    const groups = rowGroupsFor(entry.metadata, rowStart, rowEnd)
+    out.rowGroupsTotal += groups.total
+    out.rowGroupsRead += groups.read
+    if (out.firstRowGroup < 0) out.firstRowGroup = groups.first
+    out.lastRowGroup = groups.last
 
     const wantOhlc = columns.includes('open')
     for (const r of rows) {

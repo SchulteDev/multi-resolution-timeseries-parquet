@@ -17,6 +17,17 @@ const ROW_GROUP_SIZE = 10_000
  *   row groups. Codec defaults to SNAPPY, which hyparquet decodes natively (no
  *   hyparquet-compressors dependency on the read path).
  */
+/**
+ * Bytes the reader must fetch from the tail to parse the metadata: the Thrift
+ * footer plus the 8-byte trailer (4-byte length + "PAR1"). Recording this in
+ * the manifest lets the frontend read the footer in exactly one minimal range
+ * request instead of guessing with a fixed initialFetchSize.
+ */
+export function footerBytes(buf: ArrayBuffer): number {
+  const dv = new DataView(buf, buf.byteLength - 8, 8)
+  return dv.getUint32(0, true) + 8
+}
+
 export function serializeTier(series: Series): ArrayBuffer {
   return parquetWriteBuffer({
     columnData: [

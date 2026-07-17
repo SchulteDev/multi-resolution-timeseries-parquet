@@ -47,20 +47,64 @@ main { max-width: 1100px; margin: 0 auto; }
   padding: 12px 8px 4px;
 }
 
-.stats {
+/* Query + execution plan — the point of the demo, so always visible. */
+.explain {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 1px;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 16px;
   margin: 16px 0 0;
-  background: var(--border);
+}
+.explain-col {
+  background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 10px;
-  overflow: hidden;
+  padding: 14px 16px 12px;
+  min-width: 0;
 }
-.stats > div { background: var(--panel); padding: 12px 16px; }
-.stats dt { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 4px; }
-.stats dd { margin: 0; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; }
-#stat-bytes { color: var(--accent); }
+.explain h2 {
+  margin: 0 0 10px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  font-weight: 600;
+}
+#sql {
+  margin: 0;
+  overflow-x: auto;
+  font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text);
+  white-space: pre;
+}
+
+#plan {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 14px;
+  margin: 0;
+  font-size: 13px;
+}
+#plan dt {
+  color: var(--muted);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+#plan dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+#plan dd:last-of-type { color: var(--accent); font-weight: 600; }
+
+.plan-note {
+  margin: 12px 0 0;
+  padding: 8px 10px;
+  border-left: 2px solid #d9a441;
+  background: rgba(217, 164, 65, 0.08);
+  color: #e8c98a;
+  font-size: 12.5px;
+}
+.caption { color: var(--muted); font-size: 12px; margin: 12px 0 0; }
 
 .hint { color: var(--muted); font-size: 13px; max-width: 75ch; margin-top: 16px; }
 code { background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
