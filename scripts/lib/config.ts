@@ -16,8 +16,5 @@ const ROOT = process.cwd()
 
 // Committed: the pipeline's input. Gzipped so it fits in the repo.
 export const RAW_CSV_PATH = join(ROOT, 'data', 'raw', '1min.csv.gz')
-// Committed: a readable slice of the same data, so the format is visible on
-// GitHub without gunzipping (also used as a test fixture).
-export const SAMPLE_CSV_PATH = join(ROOT, 'data', 'sample', '1min-sample.csv')
 // Generated: served statically by Vite and deployed to Pages.
 export const OUT_DIR = join(ROOT, 'public', 'data')

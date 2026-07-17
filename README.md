@@ -44,7 +44,15 @@ Three independent mechanisms, all visible in the plan panel:
 
 ## Key design decisions
 
-- **The raw CSV is committed; the build only transforms it.** `data/raw/1min.csv.gz` is the pipeline's input — you can `gunzip -c … | head` it, and [`data/sample/1min-sample.csv`](data/sample/1min-sample.csv) shows the format in plain text. `npm run generate` invents nothing; point it at your own CSV with the same columns and it works unchanged. (`scripts/seed.ts` is how *this* demo's CSV was fabricated — a one-time provenance step, deliberately not part of the build.)
+- **The raw CSV is committed; the build only transforms it.** `data/raw/1min.csv.gz` is the pipeline's input (`npm run unpack` to read it). `npm run generate` invents nothing — point it at your own CSV with these columns and it works unchanged:
+
+  ```csv
+  ts,open,high,low,close
+  1577836800000,100.00,100.00,99.57,99.57
+  1577836860000,99.57,99.68,99.15,99.15
+  ```
+
+  (`scripts/seed.ts` is how *this* demo's CSV was fabricated — a one-time provenance step, deliberately not part of the build.)
 - **OHLC per bucket, not mean.** This is market data — a plain average destroys the highs and lows. Each tier preserves open/high/low/close so candles survive downsampling.
 - **OHLC composes, so tiers cascade.** `open=first, high=max, low=min, close=last` combine correctly across bucket merges (OHLC is a monoid). Coarser tiers are built from the next-finer tier (1min→15min→1h→1d), not by re-scanning the raw data — and the result is provably identical to a direct rollup (enforced by a test). A mean would *not* compose. The same `rollup()` also runs in the browser for derived resolutions.
 - **One file per tier — even the 52.6 MB one.** This is deliberately *not* production practice (see limitations), but it makes the demo honest: with monthly partitions, part of the win comes from picking the right file, which is just a manifest lookup. With a single file, **100% of the win is Parquet's own machinery** — footer, row-group stats, column chunks, range requests.
@@ -78,7 +86,6 @@ npm run reset      # delete generated output (public/data + dist); keeps data/ra
 ```
 data/
   raw/1min.csv.gz        committed — the pipeline's input (105 MB CSV, 26 MB gzipped)
-  sample/1min-sample.csv committed — 200 rows, readable on GitHub; test fixture
 shared/                  pure logic shared by build + frontend (tested in isolation)
   time.ts                  resolution ladder + bucket math
   ohlc.ts                  OHLC series type + cascade rollup (used on BOTH sides)
