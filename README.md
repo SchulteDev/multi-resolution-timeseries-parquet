@@ -67,6 +67,7 @@ npm run dev        # open the printed localhost URL
 ```bash
 npm test           # vitest — rollup/OHLC-composition, tier selection, CSV parsing, row-range math, write↔read round-trip
 npm run build      # tsc typecheck + vite production build into dist/
+npm run reset      # delete generated output (public/data + dist); keeps data/raw, so `npm run generate` starts clean
 ```
 
 ## Project layout
