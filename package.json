@@ -17,7 +17,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "hyparquet": "1.28.1",
+    "hyparquet": "1.28.2",
     "hyparquet-writer": "0.16.6",
     "uplot": "1.6.32"
   },
