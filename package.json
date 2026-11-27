@@ -18,7 +18,7 @@
   },
   "dependencies": {
     "hyparquet": "1.33.2",
-    "hyparquet-writer": "0.18.0",
+    "hyparquet-writer": "0.18.1",
     "uplot": "1.6.32"
   },
   "devDependencies": {
